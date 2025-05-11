@@ -1,0 +1,52 @@
+name: Lint and Format
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.5.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached dependencies
+        id: cached-poetry-dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --with dev --no-interaction
+
+      - name: Run black check
+        run: |
+          poetry run black --check elastic_cloud_agent tests
+
+      - name: Run isort check
+        run: |
+          poetry run isort --check-only elastic_cloud_agent tests
+
+      - name: Run ruff check
+        run: |
+          poetry run ruff check elastic_cloud_agent tests
+
+      - name: Run mypy
+        run: |
+          poetry run mypy elastic_cloud_agent tests

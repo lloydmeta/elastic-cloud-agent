@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "elastic-cloud-agent"
+version = "0.1.0"
+description = "Interactive chat Agent for Elastic Cloud administrators"
+authors = ["lloydmeta <lloydmeta@gmail.com>"]
+readme = "README.md"
+packages = [{include = "elastic_cloud_agent"}]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+langchain = "^0.3.25"
+langchain-community = "^0.3.23"
+langchain-openai = "^0.3.16"
+openai = "^1.10.0"
+python-dotenv = "^1.0.0"
+duckduckgo-search = "^8.0.1"
+pydantic = "^2.0.0"
+colorama = "^0.4.6"  # For console formatting
+types-pyyaml = "^6.0.12"
+types-colorama = "^0.4.15"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+black = "^25.1.0"
+isort = "^6.0.1"
+mypy = "^1.15.0"
+ruff = "^0.11.9"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.ruff]
+line-length = 100
+
+[tool.poetry.scripts]
+elastic-chat = "elastic_cloud_agent.main:main"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
