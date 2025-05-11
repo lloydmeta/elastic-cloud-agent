@@ -1,4 +1,4 @@
-"""Tools for the Elastic Cloud chat agent."""
+"""Tools for the Elastic Cloud Agent."""
 
 from elastic_cloud_agent.tools.openapi_tool import create_openapi_toolkit
 from elastic_cloud_agent.tools.search import create_search_tool

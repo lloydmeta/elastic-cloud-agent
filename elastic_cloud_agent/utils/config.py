@@ -1,5 +1,5 @@
 """
-Configuration utilities for the Elastic Cloud chat agent.
+Configuration utilities for the Elastic Cloud Agent.
 """
 
 import os

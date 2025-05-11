@@ -1,5 +1,5 @@
 """
-Main entry point for the Elastic Cloud chat agent.
+Main entry point for the Elastic Cloud Agent.
 """
 
 import os
@@ -20,10 +20,10 @@ init(autoreset=True)
 def print_welcome_message() -> None:
     """Print a welcome message to the console."""
     print(f"\n{Fore.CYAN}{'=' * 80}")
-    print(f"{Fore.CYAN}{'Elastic Cloud Chat Agent':^80}")
+    print(f"{Fore.CYAN}{'Elastic Cloud Agent':^80}")
     print(f"{Fore.CYAN}{'=' * 80}{Style.RESET_ALL}")
     print(
-        "\nWelcome to the Elastic Cloud Chat Agent! Ask questions "
+        "\nWelcome to the Elastic Cloud Agent! Ask questions "
         "or request actions related to "
         "your Elastic Cloud deployments.\n"
     )

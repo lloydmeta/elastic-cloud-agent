@@ -1,5 +1,5 @@
 """
-Elastic Cloud Chat Agent.
+Elastic Cloud Agent.
 
 An interactive chat Agent for Elastic Cloud administrators that can
 search for information and perform actions through the Elastic Cloud API.

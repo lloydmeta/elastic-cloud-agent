@@ -1,5 +1,5 @@
 """
-Search tool for the Elastic Cloud chat agent.
+Search tool for the Elastic Cloud Agent.
 """
 
 from langchain_community.tools import DuckDuckGoSearchRun

@@ -1,6 +1,9 @@
-# Elastic Cloud Chat Agent
+# Elastic Cloud Agent
+[![Tests](https://github.com/lloydmeta/elastic-cloud-agent/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/lloydmeta/elastic-cloud-agent/actions/workflows/test.yml)
 
 An interactive chat agent that allows administrators to talk to and ask questions about Elastic Cloud. The agent can search for information and perform actions by consuming an OpenAPI specification.
+
+![example](example.jpg)
 
 ## Features
 

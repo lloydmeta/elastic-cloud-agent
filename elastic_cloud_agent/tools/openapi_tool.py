@@ -1,5 +1,5 @@
 """
-OpenAPI tool for the Elastic Cloud chat agent.
+OpenAPI tool for the Elastic Cloud Agent.
 """
 
 import json

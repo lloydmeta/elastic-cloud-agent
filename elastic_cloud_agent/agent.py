@@ -1,5 +1,5 @@
 """
-Agent configuration for the Elastic Cloud chat agent.
+Agent configuration for the Elastic Cloud Agent.
 """
 
 from typing import Optional
