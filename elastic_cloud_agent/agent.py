@@ -7,7 +7,7 @@ from typing import Optional
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 
 from elastic_cloud_agent.tools import create_openapi_toolkit, create_search_tool
 from elastic_cloud_agent.utils import Config
@@ -63,17 +63,20 @@ def create_agent_prompt() -> ChatPromptTemplate:
     )
 
 
-def create_llm() -> ChatOpenAI:
+def create_llm() -> AzureChatOpenAI:
     """
     Create and configure the language model.
 
     Returns:
         ChatOpenAI: The configured language model
     """
-    return ChatOpenAI(
+    return AzureChatOpenAI(
         model="gpt-4o",  # Use GPT-4 for better reasoning capabilities
         temperature=0,  # Use deterministic responses for consistency
         api_key=Config.OPENAI_API_KEY,
+        azure_deployment=Config.AZURE_OPENAI_DEPLOYMENT,
+        api_version=Config.AZURE_OPENAI_API_VERSION,
+        azure_endpoint=Config.AZURE_OPENAI_ENDPOINT,
     )
 
 

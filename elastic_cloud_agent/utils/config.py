@@ -18,6 +18,11 @@ class Config:
     # OpenAI API configuration
     OPENAI_API_KEY: SecretStr = SecretStr(os.getenv("OPENAI_API_KEY", ""))
 
+    # Azure OpenAI configuration
+    AZURE_OPENAI_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
+    AZURE_OPENAI_API_VERSION: str = os.getenv("AZURE_OPENAI_API_VERSION", "")
+    AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+
     # Elastic Cloud configuration
     ELASTIC_CLOUD_BASE_URL: str = os.getenv("ELASTIC_CLOUD_BASE_URL", "")
     ELASTIC_CLOUD_API_KEY: str = os.getenv("ELASTIC_CLOUD_API_KEY", "")
@@ -41,6 +46,15 @@ class Config:
 
         if not cls.OPENAI_API_KEY:
             errors.append("OPENAI_API_KEY is not set in the environment")
+
+        if not cls.AZURE_OPENAI_DEPLOYMENT:
+            errors.append("AZURE_DEPLOYMENT is not set in the environment")
+
+        if not cls.AZURE_OPENAI_API_VERSION:
+            errors.append("API_VERSION is not set in the environment")
+
+        if not cls.AZURE_OPENAI_ENDPOINT:
+            errors.append("AZURE_ENDPOINT is not set in the environment")
 
         if not cls.ELASTIC_CLOUD_BASE_URL:
             errors.append("ELASTIC_CLOUD_BASE_URL is not set in the environment")
