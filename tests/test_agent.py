@@ -21,6 +21,9 @@ def mock_env_vars():
             "OPENAI_API_KEY": "test-api-key",
             "ELASTIC_CLOUD_BASE_URL": "https://test.es.example.com",
             "ELASTIC_CLOUD_API_KEY": "test-elastic-key",
+            "AZURE_OPENAI_DEPLOYMENT": "test-deployment",
+            "AZURE_OPENAI_API_VERSION": "test-version",
+            "AZURE_OPENAI_ENDPOINT": "https://test.azure.example.com",
         },
     ):
         yield
@@ -40,7 +43,7 @@ def test_create_agent_prompt():
     assert "chat_history" in placeholder_variables
 
 
-@patch("elastic_cloud_agent.agent.ChatOpenAI")
+@patch("elastic_cloud_agent.agent.AzureChatOpenAI")
 def test_create_llm(mock_chat_openai, mock_env_vars):
     """Test that the language model is created correctly."""
     mock_instance = MagicMock()
