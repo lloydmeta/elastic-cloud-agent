@@ -33,6 +33,20 @@ class Config:
     )
 
     @classmethod
+    def is_azure_config(cls) -> bool:
+        """
+        Check if Azure OpenAI configuration is provided.
+
+        Returns:
+            bool: True if all Azure OpenAI environment variables are set
+        """
+        return bool(
+            cls.AZURE_OPENAI_DEPLOYMENT
+            and cls.AZURE_OPENAI_API_VERSION
+            and cls.AZURE_OPENAI_ENDPOINT
+        )
+
+    @classmethod
     def validate(cls) -> tuple[bool, list[str]]:
         """
         Validate that all required configuration is present.
@@ -47,14 +61,22 @@ class Config:
         if not cls.OPENAI_API_KEY:
             errors.append("OPENAI_API_KEY is not set in the environment")
 
-        if not cls.AZURE_OPENAI_DEPLOYMENT:
-            errors.append("AZURE_DEPLOYMENT is not set in the environment")
+        # Check Azure configuration if any Azure env vars are partially set
+        has_azure_vars = any(
+            [cls.AZURE_OPENAI_DEPLOYMENT, cls.AZURE_OPENAI_API_VERSION, cls.AZURE_OPENAI_ENDPOINT]
+        )
 
-        if not cls.AZURE_OPENAI_API_VERSION:
-            errors.append("API_VERSION is not set in the environment")
-
-        if not cls.AZURE_OPENAI_ENDPOINT:
-            errors.append("AZURE_ENDPOINT is not set in the environment")
+        if has_azure_vars and not cls.is_azure_config():
+            if not cls.AZURE_OPENAI_DEPLOYMENT:
+                errors.append(
+                    "AZURE_OPENAI_DEPLOYMENT is not set (required when using Azure OpenAI)"
+                )
+            if not cls.AZURE_OPENAI_API_VERSION:
+                errors.append(
+                    "AZURE_OPENAI_API_VERSION is not set (required when using Azure OpenAI)"
+                )
+            if not cls.AZURE_OPENAI_ENDPOINT:
+                errors.append("AZURE_OPENAI_ENDPOINT is not set (required when using Azure OpenAI)")
 
         if not cls.ELASTIC_CLOUD_BASE_URL:
             errors.append("ELASTIC_CLOUD_BASE_URL is not set in the environment")
