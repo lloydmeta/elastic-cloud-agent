@@ -3,6 +3,7 @@ Tests for the intent-aware API tool.
 """
 
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -420,6 +421,207 @@ class TestIntentAwareApiTool:
         mock_requests_wrapper.get.assert_called_once_with("https://test.elastic.com/deployments")
         assert "API Call Executed Successfully" in result
         assert "GET" in result
+
+    def test_fallback_guidance(self, api_tool):
+        """Test fallback guidance when no optimised spec is available."""
+        query = "How do I manage unknown resources?"
+        intent = "management"
+        
+        # Mock LLM response for fallback guidance
+        mock_response = Mock()
+        mock_response.content = "**Suggested endpoints:**\n- GET /deployments\n- GET /account"
+        api_tool.llm.invoke.return_value = mock_response
+        
+        result = api_tool._provide_fallback_guidance(query, intent)
+        
+        assert "No specific API endpoints found" in result
+        assert "Alternative approaches:" in result
+        assert "management" in result
+        assert query in result
+
+    def test_query_expansion(self, api_tool):
+        """Test query expansion for better API matching."""
+        query = "I want to create a new deployment for my application"
+        
+        # Mock LLM response for query expansion
+        mock_response = Mock()
+        mock_response.content = "create deployment provision new instance application cluster"
+        api_tool.llm.invoke.return_value = mock_response
+        
+        expanded = api_tool._expand_query_for_api_matching(query)
+        
+        assert "create deployment provision new instance application cluster" in expanded
+        
+        # Test short query doesn't get expanded
+        short_query = "list deployments"
+        expanded_short = api_tool._expand_query_for_api_matching(short_query)
+        assert expanded_short == short_query
+
+    def test_response_caching(self, api_tool, mock_requests_wrapper):
+        """Test API response caching for GET requests."""
+        # Mock the intent analysis and LLM
+        api_tool.spec_registry.analyse_query_intent = Mock(return_value={"intent": "management"})
+        api_tool.cache_manager.get_spec_lazy = Mock(return_value={"paths": {}})
+        
+        mock_response = Mock()
+        mock_response.content = "execution"
+        api_tool.llm.invoke.return_value = mock_response
+
+        with patch(
+            "elastic_cloud_agent.tools.intent_aware_api_tool.Config.ELASTIC_CLOUD_BASE_URL",
+            "https://test.elastic.com",
+        ):
+            # First call - should hit the API
+            result1 = api_tool._run(method="GET", endpoint="/deployments")
+            mock_requests_wrapper.get.assert_called_once_with("https://test.elastic.com/deployments")
+            
+            # Reset mock call count
+            mock_requests_wrapper.get.reset_mock()
+            
+            # Second call - should use cache
+            result2 = api_tool._run(method="GET", endpoint="/deployments")
+            mock_requests_wrapper.get.assert_not_called()  # Should not call API again
+            
+            # Results should be the same
+            assert result1 == result2
+
+    def test_response_validation(self, api_tool):
+        """Test API response validation."""
+        # Test valid response
+        valid_response = {"deployments": [{"id": "123", "name": "test"}]}
+        validation = api_tool._validate_api_response(valid_response, "GET", "/deployments")
+        assert validation["is_valid"] is True
+        
+        # Test error response
+        error_response = {"error": "Not found"}
+        validation = api_tool._validate_api_response(error_response, "GET", "/deployments")
+        assert validation["is_valid"] is False
+        assert "API Error" in validation["error"]
+        
+        # Test HTTP error status
+        http_error = {"status": 404, "message": "Not found"}
+        validation = api_tool._validate_api_response(http_error, "GET", "/deployments")
+        assert validation["is_valid"] is False
+        assert "HTTP 404" in validation["error"]
+
+    def test_intelligent_fallback_generation(self, api_tool):
+        """Test intelligent fallback suggestions using LLM."""
+        query = "How do I scale my cluster?"
+        intent = "management"
+        
+        # Mock LLM response for intelligent fallback
+        mock_response = Mock()
+        mock_response.content = """
+## Suggested Endpoints
+
+1. **GET /deployments/{id}** - Retrieve current deployment details
+2. **PUT /deployments/{id}** - Update deployment configuration for scaling
+3. **GET /deployments/{id}/elasticsearch** - Check current Elasticsearch configuration
+"""
+        api_tool.llm.invoke.return_value = mock_response
+        
+        result = api_tool._generate_intelligent_fallback(query, intent)
+        
+        assert "Suggested Endpoints" in result
+        assert "GET /deployments/{id}" in result
+        assert "PUT /deployments/{id}" in result
+
+    def test_response_summary_generation(self, api_tool):
+        """Test intelligent response summary generation."""
+        # Test deployment response
+        deployment_response = {"deployments": [{"id": "1"}, {"id": "2"}]}
+        summary = api_tool._generate_response_summary(deployment_response, "management", "list deployments")
+        assert "Found 2 deployment(s)" in summary
+        
+        # Test account response
+        account_response = {"account": {"id": "123", "name": "test"}}
+        summary = api_tool._generate_response_summary(account_response, "basic", "get account")
+        assert "Account information retrieved" in summary
+        
+        # Test single resource response
+        resource_response = {"id": "abc123", "name": "test-resource"}
+        summary = api_tool._generate_response_summary(resource_response, "management", "get resource")
+        assert "Resource retrieved (ID: abc123)" in summary
+        
+        # Test text response
+        text_response = "Simple text response"
+        summary = api_tool._generate_response_summary(text_response, "basic", "test")
+        assert "Simple text response" in summary
+
+    def test_cache_key_generation(self, api_tool):
+        """Test cache key generation for API responses."""
+        # Test with different parameters
+        key1 = api_tool._generate_cache_key("GET", "/deployments", None)
+        key2 = api_tool._generate_cache_key("GET", "/deployments", {"param": "value"})
+        key3 = api_tool._generate_cache_key("POST", "/deployments", None)
+        
+        # All keys should be different
+        assert key1 != key2
+        assert key1 != key3
+        assert key2 != key3
+        
+        # Same parameters should generate same key
+        key4 = api_tool._generate_cache_key("GET", "/deployments", None)
+        assert key1 == key4
+
+    def test_cache_expiration(self, api_tool):
+        """Test cache expiration logic."""
+        cache_key = "test_key"
+        response = "test_response"
+        
+        # Cache a response
+        api_tool._cache_response(cache_key, response)
+        
+        # Should be retrievable immediately
+        cached = api_tool._get_cached_response(cache_key)
+        assert cached == response
+        
+        # Mock time to simulate expiration
+        with patch('time.time', return_value=time.time() + 400):  # 400 seconds later
+            cached_expired = api_tool._get_cached_response(cache_key)
+            assert cached_expired is None
+
+    def test_cache_cleanup(self, api_tool):
+        """Test cache cleanup when size limit exceeded."""
+        # Fill cache beyond limit
+        for i in range(105):  # Exceed the 100 entry limit
+            api_tool._cache_response(f"key_{i}", f"response_{i}")
+        
+        # Should trigger cleanup
+        assert len(api_tool._response_cache) <= 100
+
+    def test_error_response_formatting(self, api_tool):
+        """Test error response formatting with suggestions."""
+        method = "GET"
+        url = "https://test.elastic.com/deployments"
+        error_data = {"error": "Unauthorized"}
+        intent = "management"
+        error_msg = "API Error: Unauthorized"
+        
+        result = api_tool._format_error_response(method, url, error_data, intent, error_msg)
+        
+        assert "API Call Failed" in result
+        assert "management" in result
+        assert "GET" in result
+        assert "Unauthorized" in result
+        assert "Suggestions:" in result
+        assert "Check if the endpoint path is correct" in result
+
+    def test_api_error_handling(self, api_tool):
+        """Test API error handling with troubleshooting steps."""
+        method = "POST"
+        endpoint = "/deployments"
+        error = "Connection timeout"
+        intent = "management"
+        
+        result = api_tool._handle_api_error(method, endpoint, error, intent)
+        
+        assert "API Call Error" in result
+        assert "management" in result
+        assert "POST" in result
+        assert "Connection timeout" in result
+        assert "Troubleshooting Steps:" in result
+        assert "Check your network connection" in result
 
 
 class TestIntegration:

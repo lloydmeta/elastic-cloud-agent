@@ -3,6 +3,8 @@ Intent-aware OpenAPI tool for the Elastic Cloud Agent.
 """
 
 import json
+import hashlib
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -92,6 +94,10 @@ class IntentAwareApiTool(BaseTool):
 
         # Preload common specs in background
         self.cache_manager.preload_common_specs()
+        
+        # Initialize response cache for caching API responses
+        self._response_cache: Dict[str, Dict[str, Any]] = {}
+        self._cache_ttl = 300  # 5 minutes TTL for API responses
 
     def _run(self, query: str = "", **kwargs) -> str:
         """
@@ -105,12 +111,15 @@ class IntentAwareApiTool(BaseTool):
             API response or guidance
         """
         try:
+            # Expand query for better API matching
+            expanded_query = self._expand_query_for_api_matching(query)
+            
             # Classify user intent
-            intent_analysis = self.spec_registry.analyse_query_intent(query)
+            intent_analysis = self.spec_registry.analyse_query_intent(expanded_query)
             intent = intent_analysis["intent"]
 
             # Get optimised spec for this intent
-            optimised_spec = self.cache_manager.get_spec_lazy(query)
+            optimised_spec = self.cache_manager.get_spec_lazy(expanded_query)
 
             # If user wants to execute an API call (check this first)
             if self._is_execution_query(query, kwargs):
@@ -221,7 +230,7 @@ Classification:"""
             paths = optimised_spec.get("paths", {})
 
             if not paths:
-                return f"No specific API endpoints found for '{intent}' intent. Please try a different query or check the API specification."
+                return self._provide_fallback_guidance(query, intent)
 
             # Generate guidance
             guidance = [
@@ -256,6 +265,120 @@ Classification:"""
         except Exception as e:
             return f"Error generating guidance: {str(e)}"
 
+    def _provide_fallback_guidance(self, query: str, intent: str) -> str:
+        """Provide fallback guidance when no optimised spec is available."""
+        try:
+            # Use LLM to suggest potential API endpoints based on query
+            fallback_guidance = self._generate_intelligent_fallback(query, intent)
+            
+            # Add general guidance
+            general_guidance = [
+                f"**Intent Classification:** {intent}",
+                f"**Query:** {query}",
+                "",
+                "No specific API endpoints found for this intent, but here are some suggestions:",
+                "",
+                fallback_guidance,
+                "",
+                "**Alternative approaches:**",
+                "- Try rephrasing your query with more specific terms",
+                "- Use broader intent categories (e.g., 'list deployments' instead of specific deployment names)",
+                "- Check if the API specification includes the functionality you need",
+                "",
+                f"Base URL: {Config.ELASTIC_CLOUD_BASE_URL}",
+            ]
+            
+            return "\n".join(general_guidance)
+            
+        except Exception as e:
+            return f"Error generating fallback guidance: {str(e)}"
+
+    def _generate_intelligent_fallback(self, query: str, intent: str) -> str:
+        """Generate intelligent fallback suggestions using LLM."""
+        # Extract all available paths from base spec for context
+        available_paths = list(self.base_spec.get("paths", {}).keys())
+        
+        if not available_paths:
+            return "No API endpoints available in the current specification."
+        
+        # Sample a subset of paths to avoid token limits
+        sample_paths = available_paths[:20] if len(available_paths) > 20 else available_paths
+        
+        prompt = f"""
+You are an API guidance assistant for Elastic Cloud operations. Given a user query and intent, suggest the most relevant API endpoints from the available paths.
+
+User Query: "{query}"
+Intent: {intent}
+
+Available API Endpoints:
+{chr(10).join([f"- {path}" for path in sample_paths])}
+
+Based on the query and intent, suggest 2-3 most relevant API endpoints that might help the user. For each suggestion, provide:
+1. The endpoint path
+2. Likely HTTP method (GET, POST, PUT, DELETE)
+3. Brief explanation of what it does
+4. Why it's relevant to the query
+
+Format your response as markdown with clear structure.
+
+Suggestions:"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            content = response.content
+            if isinstance(content, list):
+                content = str(content[0]) if content else "No suggestions available."
+            else:
+                content = str(content)
+            
+            return content.strip()
+            
+        except Exception:
+            # Final fallback - return basic suggestions
+            return "Consider trying common endpoints like:\n- GET /deployments (list deployments)\n- GET /account (account information)\n- GET /deployments/{id} (specific deployment details)"
+
+    def _expand_query_for_api_matching(self, query: str) -> str:
+        """Expand query with API-relevant synonyms and context for better matching."""
+        if not query or not query.strip():
+            return query
+        
+        # For simple queries, return as-is to avoid over-processing
+        if len(query.split()) <= 3:
+            return query
+        
+        prompt = f"""
+You are a query expansion assistant for Elastic Cloud API operations. Given a user query, expand it with relevant API terminology and synonyms to improve API endpoint matching.
+
+Original Query: "{query}"
+
+Expand the query by:
+1. Adding relevant API terminology (e.g., "list" → "list, get, retrieve, fetch")
+2. Including common Elastic Cloud terms (e.g., "cluster" → "cluster, deployment, instance")
+3. Adding operation synonyms (e.g., "create" → "create, add, provision, deploy")
+4. Keeping the original intent clear
+
+Return only the expanded query text, not explanations. Keep it concise and focused.
+
+Expanded Query:"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            content = response.content
+            if isinstance(content, list):
+                expanded = str(content[0]).strip() if content else query
+            else:
+                expanded = str(content).strip()
+            
+            # Validate expansion isn't too long or nonsensical
+            if len(expanded) > len(query) * 3 or len(expanded) > 500:
+                return query  # Return original if expansion is too aggressive
+            
+            return expanded if expanded else query
+            
+        except Exception:
+            # Return original query if expansion fails
+            return query
+
     def _execute_api_call(
         self, query: str, intent: str, optimised_spec: Dict[str, Any], kwargs: Dict[str, Any]
     ) -> str:
@@ -267,6 +390,13 @@ Classification:"""
 
             if not endpoint:
                 return "To execute an API call, please specify the endpoint path."
+
+            # Check cache for GET requests (safe to cache)
+            if method == "GET":
+                cache_key = self._generate_cache_key(method, endpoint, data)
+                cached_response = self._get_cached_response(cache_key)
+                if cached_response:
+                    return cached_response
 
             # Construct full URL
             base_url = Config.ELASTIC_CLOUD_BASE_URL.rstrip("/")
@@ -286,26 +416,90 @@ Classification:"""
             else:
                 return f"Unsupported HTTP method: {method}"
 
-            # Format response
-            return self._format_api_response(method, full_url, response, intent)
+            # Validate and format response
+            formatted_response = self._validate_and_format_response(method, full_url, response, intent, query)
+            
+            # Cache GET responses for future use
+            if method == "GET":
+                cache_key = self._generate_cache_key(method, endpoint, data)
+                self._cache_response(cache_key, formatted_response)
+            
+            return formatted_response
 
         except Exception as e:
-            return f"Error executing API call: {str(e)}"
+            return self._handle_api_error(method, endpoint or "", str(e), intent)
 
-    def _format_api_response(
-        self, method: str, url: str, response: Union[str, Dict[str, Any]], intent: str
+    def _validate_and_format_response(
+        self, method: str, url: str, response: Union[str, Dict[str, Any]], intent: str, query: str
     ) -> str:
-        """Format the API response for the user."""
+        """Validate and format the API response for the user."""
         try:
-            # Try to parse as JSON for better formatting
+            # Parse response if it's a string
             if isinstance(response, str):
-                response_data = json.loads(response)
-                formatted_response = json.dumps(response_data, indent=2)
+                try:
+                    response_data = json.loads(response)
+                except json.JSONDecodeError:
+                    # Not JSON, treat as plain text
+                    response_data = response
             else:
-                formatted_response = json.dumps(response, indent=2)
+                response_data = response
+            
+            # Validate response structure
+            validation_result = self._validate_api_response(response_data, method, url)
+            
+            if validation_result["is_valid"]:
+                return self._format_successful_response(method, url, response_data, intent, query)
+            else:
+                return self._format_error_response(method, url, response_data, intent, validation_result["error"])
+        
+        except Exception as e:
+            return self._handle_api_error(method, url, str(e), intent)
+
+    def _validate_api_response(self, response_data: Union[str, Dict[str, Any]], method: str, url: str) -> Dict[str, Any]:
+        """Validate API response structure and content."""
+        try:
+            # Check for common error patterns
+            if isinstance(response_data, dict):
+                # Check for standard error fields
+                if "error" in response_data or "errors" in response_data:
+                    error_msg = response_data.get("error", response_data.get("errors", "Unknown error"))
+                    return {"is_valid": False, "error": f"API Error: {error_msg}"}
+                
+                # Check for HTTP error status
+                if "status" in response_data and isinstance(response_data["status"], int):
+                    if response_data["status"] >= 400:
+                        return {"is_valid": False, "error": f"HTTP {response_data['status']}: {response_data.get('message', 'Error')}"}
+                
+                # Check for empty response on operations that should return data
+                if method == "GET" and not response_data:
+                    return {"is_valid": False, "error": "Empty response received for GET request"}
+            
+            elif isinstance(response_data, str):
+                # Check for error keywords in string responses
+                error_keywords = ["error", "failed", "invalid", "not found", "unauthorized", "forbidden"]
+                if any(keyword in response_data.lower() for keyword in error_keywords):
+                    return {"is_valid": False, "error": f"Potential error in response: {response_data[:200]}..."}
+            
+            return {"is_valid": True, "error": None}
+            
+        except Exception as e:
+            return {"is_valid": False, "error": f"Validation error: {str(e)}"}
+
+    def _format_successful_response(
+        self, method: str, url: str, response_data: Union[str, Dict[str, Any]], intent: str, query: str
+    ) -> str:
+        """Format a successful API response."""
+        try:
+            # Format response data
+            if isinstance(response_data, str):
+                formatted_response = response_data
+            else:
+                formatted_response = json.dumps(response_data, indent=2)
         except (json.JSONDecodeError, TypeError):
-            # If not JSON, return as-is
-            formatted_response = str(response)
+            formatted_response = str(response_data)
+
+        # Generate intelligent summary
+        summary = self._generate_response_summary(response_data, intent, query)
 
         return f"""
 **API Call Executed Successfully**
@@ -314,11 +508,136 @@ Classification:"""
 **Method:** {method}
 **URL:** {url}
 
+**Summary:** {summary}
+
 **Response:**
 ```json
 {formatted_response}
 ```
         """.strip()
+
+    def _format_error_response(
+        self, method: str, url: str, response_data: Union[str, Dict[str, Any]], intent: str, error: str
+    ) -> str:
+        """Format an error response with helpful suggestions."""
+        try:
+            if isinstance(response_data, str):
+                formatted_response = response_data
+            else:
+                formatted_response = json.dumps(response_data, indent=2)
+        except (json.JSONDecodeError, TypeError):
+            formatted_response = str(response_data)
+
+        return f"""
+**API Call Failed**
+
+**Intent:** {intent}
+**Method:** {method}
+**URL:** {url}
+**Error:** {error}
+
+**Response:**
+```json
+{formatted_response}
+```
+
+**Suggestions:**
+- Check if the endpoint path is correct
+- Verify required parameters are provided
+- Ensure you have proper authentication
+- Try a different HTTP method if appropriate
+        """.strip()
+
+    def _handle_api_error(self, method: str, endpoint: str, error: str, intent: str) -> str:
+        """Handle API execution errors with helpful suggestions."""
+        return f"""
+**API Call Error**
+
+**Intent:** {intent}
+**Method:** {method}
+**Endpoint:** {endpoint}
+**Error:** {error}
+
+**Troubleshooting Steps:**
+1. Check your network connection
+2. Verify the API endpoint URL is correct
+3. Ensure authentication credentials are valid
+4. Check if the API service is available
+5. Review the request parameters for correctness
+
+**Next Steps:**
+- Try a simpler API call first (e.g., GET /account)
+- Check the API documentation for this endpoint
+- Verify the base URL configuration: {Config.ELASTIC_CLOUD_BASE_URL}
+        """.strip()
+
+    def _generate_response_summary(self, response_data: Union[str, Dict[str, Any]], intent: str, query: str) -> str:
+        """Generate an intelligent summary of the API response."""
+        try:
+            if isinstance(response_data, str):
+                if len(response_data) < 100:
+                    return response_data
+                else:
+                    return f"Text response ({len(response_data)} characters)"
+            
+            elif isinstance(response_data, dict):
+                if "deployments" in response_data:
+                    count = len(response_data["deployments"]) if isinstance(response_data["deployments"], list) else 1
+                    return f"Found {count} deployment(s)"
+                elif "account" in response_data:
+                    return "Account information retrieved"
+                elif "id" in response_data:
+                    return f"Resource retrieved (ID: {response_data['id']})"
+                elif len(response_data) == 1:
+                    key = list(response_data.keys())[0]
+                    return f"Retrieved {key} information"
+                else:
+                    return f"Retrieved {len(response_data)} data fields"
+            
+            return "API response received"
+            
+        except Exception:
+            return "Response summary unavailable"
+
+    def _generate_cache_key(self, method: str, endpoint: str, data: Optional[Dict[str, Any]]) -> str:
+        """Generate a cache key for API responses."""
+        # Create a unique key based on method, endpoint, and data
+        key_data = f"{method}:{endpoint}:{json.dumps(data, sort_keys=True) if data else ''}"
+        return hashlib.md5(key_data.encode()).hexdigest()
+
+    def _get_cached_response(self, cache_key: str) -> Optional[str]:
+        """Get cached response if available and not expired."""
+        if cache_key in self._response_cache:
+            cached_entry = self._response_cache[cache_key]
+            if time.time() - cached_entry["timestamp"] < self._cache_ttl:
+                return cached_entry["response"]
+            else:
+                # Remove expired entry
+                del self._response_cache[cache_key]
+        return None
+
+    def _cache_response(self, cache_key: str, response: str) -> None:
+        """Cache an API response with timestamp."""
+        self._response_cache[cache_key] = {
+            "response": response,
+            "timestamp": time.time()
+        }
+        
+        # Simple cache cleanup - remove oldest entries if cache gets too large
+        if len(self._response_cache) > 100:
+            # Remove the oldest 20 entries
+            oldest_keys = sorted(
+                self._response_cache.keys(),
+                key=lambda k: self._response_cache[k]["timestamp"]
+            )[:20]
+            for key in oldest_keys:
+                del self._response_cache[key]
+
+    def _format_api_response(
+        self, method: str, url: str, response: Union[str, Dict[str, Any]], intent: str
+    ) -> str:
+        """Format the API response for the user (legacy method for backward compatibility)."""
+        return self._validate_and_format_response(method, url, response, intent, "")
 
     async def _arun(self, query: str = "", **kwargs) -> str:
         """Async version of _run (delegates to sync version)."""
