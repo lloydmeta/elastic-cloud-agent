@@ -43,9 +43,25 @@ def test_create_agent_prompt():
     assert "chat_history" in placeholder_variables
 
 
+@patch("elastic_cloud_agent.agent.Config.is_azure_config")
 @patch("elastic_cloud_agent.agent.AzureChatOpenAI")
-def test_create_llm(mock_chat_openai, mock_env_vars):
-    """Test that the language model is created correctly."""
+def test_create_llm_with_azure_config(mock_azure_chat_openai, mock_is_azure_config, mock_env_vars):
+    """Test that Azure OpenAI is used when Azure config is provided."""
+    mock_is_azure_config.return_value = True
+    mock_instance = MagicMock()
+    mock_azure_chat_openai.return_value = mock_instance
+
+    llm = create_llm()
+
+    mock_azure_chat_openai.assert_called_once()
+    assert llm == mock_instance
+
+
+@patch("elastic_cloud_agent.agent.Config.is_azure_config")
+@patch("elastic_cloud_agent.agent.ChatOpenAI")
+def test_create_llm_without_azure_config(mock_chat_openai, mock_is_azure_config):
+    """Test that standard OpenAI is used when Azure config is not provided."""
+    mock_is_azure_config.return_value = False
     mock_instance = MagicMock()
     mock_chat_openai.return_value = mock_instance
 
