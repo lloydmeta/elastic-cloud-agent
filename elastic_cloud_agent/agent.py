@@ -2,12 +2,12 @@
 Agent configuration for the Elastic Cloud Agent.
 """
 
-from typing import Optional
+from typing import Optional, Union
 
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
 from elastic_cloud_agent.tools import create_openapi_toolkit, create_search_tool
 from elastic_cloud_agent.utils import Config
@@ -63,21 +63,29 @@ def create_agent_prompt() -> ChatPromptTemplate:
     )
 
 
-def create_llm() -> AzureChatOpenAI:
+def create_llm() -> Union[AzureChatOpenAI, ChatOpenAI]:
     """
     Create and configure the language model.
+    Uses Azure OpenAI if Azure configuration is provided, otherwise uses standard OpenAI.
 
     Returns:
-        ChatOpenAI: The configured language model
+        Union[AzureChatOpenAI, ChatOpenAI]: The configured language model
     """
-    return AzureChatOpenAI(
-        model="gpt-4o",  # Use GPT-4 for better reasoning capabilities
-        temperature=0,  # Use deterministic responses for consistency
-        api_key=Config.OPENAI_API_KEY,
-        azure_deployment=Config.AZURE_OPENAI_DEPLOYMENT,
-        api_version=Config.AZURE_OPENAI_API_VERSION,
-        azure_endpoint=Config.AZURE_OPENAI_ENDPOINT,
-    )
+    if Config.is_azure_config():
+        return AzureChatOpenAI(
+            model="gpt-4o",  # Use GPT-4 for better reasoning capabilities
+            temperature=0,  # Use deterministic responses for consistency
+            api_key=Config.OPENAI_API_KEY,
+            azure_deployment=Config.AZURE_OPENAI_DEPLOYMENT,
+            api_version=Config.AZURE_OPENAI_API_VERSION,
+            azure_endpoint=Config.AZURE_OPENAI_ENDPOINT,
+        )
+    else:
+        return ChatOpenAI(
+            model="gpt-4o",  # Use GPT-4 for better reasoning capabilities
+            temperature=0,  # Use deterministic responses for consistency
+            api_key=Config.OPENAI_API_KEY,
+        )
 
 
 def create_agent(llm: Optional[BaseLanguageModel] = None) -> AgentExecutor:
