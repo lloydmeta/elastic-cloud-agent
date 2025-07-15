@@ -112,7 +112,12 @@ class TestIntentAwareApiTool:
         assert api_tool.cache_manager is not None
 
     def test_is_exploratory_query(self, api_tool):
-        """Test detection of exploratory queries."""
+        """Test detection of exploratory queries using LLM."""
+        # Mock LLM to return "exploratory" for all queries
+        mock_response = Mock()
+        mock_response.content = "exploratory"
+        api_tool.llm.invoke.return_value = mock_response
+
         exploratory_queries = [
             "What APIs are available?",
             "How do I create a deployment?",
@@ -124,12 +129,25 @@ class TestIntentAwareApiTool:
 
         for query in exploratory_queries:
             assert api_tool._is_exploratory_query(query), f"Should detect '{query}' as exploratory"
+        
+        # Test empty query defaults to exploratory
+        assert api_tool._is_exploratory_query(""), "Empty query should default to exploratory"
+        assert api_tool._is_exploratory_query(None), "None query should default to exploratory"
 
     def test_is_execution_query(self, api_tool):
-        """Test detection of execution queries."""
-        # Test with explicit parameters
+        """Test detection of execution queries using LLM."""
+        # Test with explicit parameters (should return True immediately)
         assert api_tool._is_execution_query("Any query", {"method": "GET"})
         assert api_tool._is_execution_query("Any query", {"endpoint": "/deployments"})
+        
+        # Test empty query defaults to False
+        assert not api_tool._is_execution_query("", {}), "Empty query should default to exploratory"
+        assert not api_tool._is_execution_query(None, {}), "None query should default to exploratory"
+
+        # Mock LLM to return "execution" for action queries
+        mock_response = Mock()
+        mock_response.content = "execution"
+        api_tool.llm.invoke.return_value = mock_response
 
         # Test with action words
         execution_queries = [
@@ -350,6 +368,58 @@ class TestIntentAwareApiTool:
 
         assert result == "Test result"
         api_tool._run.assert_called_once_with(query)
+
+    def test_runtime_validation_with_empty_query(self, api_tool, mock_requests_wrapper):
+        """Test runtime validation when agent calls with only method/endpoint (no query)."""
+        # This simulates the scenario where the agent makes a follow-up call
+        # with only method and endpoint parameters, without a query
+        
+        # Mock the intent analysis to handle empty query
+        api_tool.spec_registry.analyse_query_intent = Mock(return_value={"intent": "management"})
+        api_tool.cache_manager.get_spec_lazy = Mock(return_value={"paths": {}})
+        
+        # Mock LLM response for _is_execution_query
+        mock_response = Mock()
+        mock_response.content = "execution"
+        api_tool.llm.invoke.return_value = mock_response
+
+        with patch(
+            "elastic_cloud_agent.tools.intent_aware_api_tool.Config.ELASTIC_CLOUD_BASE_URL",
+            "https://test.elastic.com",
+        ):
+            # This should not raise a validation error
+            result = api_tool._run("", method="GET", endpoint="/deployments")
+
+        # Verify the API call was executed
+        mock_requests_wrapper.get.assert_called_once_with("https://test.elastic.com/deployments")
+        assert "API Call Executed Successfully" in result
+        assert "GET" in result
+
+    def test_agent_follow_up_call_pattern(self, api_tool, mock_requests_wrapper):
+        """Test the exact agent follow-up call pattern with only kwargs."""
+        # This simulates the agent calling with only method/endpoint as kwargs
+        # without any positional arguments
+        
+        # Mock the intent analysis to handle empty query
+        api_tool.spec_registry.analyse_query_intent = Mock(return_value={"intent": "management"})
+        api_tool.cache_manager.get_spec_lazy = Mock(return_value={"paths": {}})
+        
+        # Mock LLM response for _is_execution_query
+        mock_response = Mock()
+        mock_response.content = "execution"
+        api_tool.llm.invoke.return_value = mock_response
+
+        with patch(
+            "elastic_cloud_agent.tools.intent_aware_api_tool.Config.ELASTIC_CLOUD_BASE_URL",
+            "https://test.elastic.com",
+        ):
+            # This mimics the exact agent call pattern: {'method': 'GET', 'endpoint': '/deployments'}
+            result = api_tool._run(method="GET", endpoint="/deployments")
+
+        # Verify the API call was executed
+        mock_requests_wrapper.get.assert_called_once_with("https://test.elastic.com/deployments")
+        assert "API Call Executed Successfully" in result
+        assert "GET" in result
 
 
 class TestIntegration:

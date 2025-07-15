@@ -19,7 +19,7 @@ from elastic_cloud_agent.utils.config import Config
 class ApiRequest(BaseModel):
     """Schema for API request inputs."""
 
-    query: str = Field(description="The user's query describing what they want to do")
+    query: Optional[str] = Field(default="", description="The user's query describing what they want to do")
     method: Optional[str] = Field(default=None, description="HTTP method (GET, POST, etc.)")
     endpoint: Optional[str] = Field(default=None, description="API endpoint path")
     data: Optional[Dict[str, Any]] = Field(default=None, description="Request body data")
@@ -93,12 +93,12 @@ class IntentAwareApiTool(BaseTool):
         # Preload common specs in background
         self.cache_manager.preload_common_specs()
 
-    def _run(self, query: str, **kwargs) -> str:
+    def _run(self, query: str = "", **kwargs) -> str:
         """
         Execute the API tool with intent-based optimisation.
 
         Args:
-            query: User query describing what they want to do
+            query: User query describing what they want to do (optional)
             **kwargs: Additional parameters (method, endpoint, data)
 
         Returns:
@@ -112,13 +112,13 @@ class IntentAwareApiTool(BaseTool):
             # Get optimised spec for this intent
             optimised_spec = self.cache_manager.get_spec_lazy(query)
 
+            # If user wants to execute an API call (check this first)
+            if self._is_execution_query(query, kwargs):
+                return self._execute_api_call(query, intent, optimised_spec, kwargs)
+
             # If user is asking for guidance or exploration
             if self._is_exploratory_query(query):
                 return self._provide_api_guidance(query, intent, optimised_spec)
-
-            # If user wants to execute an API call
-            if self._is_execution_query(query, kwargs):
-                return self._execute_api_call(query, intent, optimised_spec, kwargs)
 
             # Default: provide guidance with examples
             return self._provide_api_guidance(query, intent, optimised_spec)
@@ -128,31 +128,91 @@ class IntentAwareApiTool(BaseTool):
             return f"Error processing query: {str(e)}. Please try rephrasing your request or specify more details."
 
     def _is_exploratory_query(self, query: str) -> bool:
-        """Check if query is asking for exploration/guidance."""
-        exploratory_keywords = [
-            "what",
-            "how",
-            "which",
-            "available",
-            "can i",
-            "help",
-            "show",
-            "list",
-            "explain",
-        ]
-        return any(keyword in query.lower() for keyword in exploratory_keywords)
+        """Check if query is asking for exploration/guidance using LLM."""
+        if not query or not query.strip():
+            return True  # Default to exploratory for empty queries
+        
+        prompt = f"""
+You are a query classifier for an API tool. Determine if the following query is asking for exploration/guidance about available APIs, or if it's asking for execution of a specific API operation.
+
+Query: "{query}"
+
+Exploratory queries are those that:
+- Ask about what APIs are available
+- Ask for help or guidance
+- Ask how to do something
+- Ask which endpoints to use
+- Request explanations or information
+- Are general questions about capabilities
+
+Execution queries are those that:
+- Request specific API operations to be performed
+- Give specific parameters or data
+- Use action verbs like "create", "delete", "update", "get specific item"
+- Provide concrete details for an operation
+
+Respond with only "exploratory" or "execution".
+
+Classification:"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            content = response.content
+            if isinstance(content, list):
+                content = str(content[0]).strip().lower() if content else ""
+            else:
+                content = str(content).strip().lower()
+            
+            return "exploratory" in content
+        except Exception:
+            # Fallback to exploratory if LLM fails
+            return True
 
     def _is_execution_query(self, query: str, kwargs: Dict[str, Any]) -> bool:
-        """Check if query is asking for execution."""
-        execution_indicators = [
-            kwargs.get("method") is not None,
-            kwargs.get("endpoint") is not None,
-            any(
-                action in query.lower()
-                for action in ["create", "delete", "update", "start", "stop", "restart"]
-            ),
-        ]
-        return any(execution_indicators)
+        """Check if query is asking for execution using LLM and parameters."""
+        # If explicit method/endpoint provided, it's definitely execution
+        if kwargs.get("method") is not None or kwargs.get("endpoint") is not None:
+            return True
+        
+        if not query or not query.strip():
+            return False  # Empty query defaults to exploratory
+        
+        prompt = f"""
+You are a query classifier for an API tool. Determine if the following query is asking for execution of a specific API operation, or if it's asking for exploration/guidance about available APIs.
+
+Query: "{query}"
+
+Execution queries are those that:
+- Request specific API operations to be performed
+- Give specific parameters or data
+- Use action verbs like "create", "delete", "update", "get specific item"
+- Provide concrete details for an operation
+- Ask to perform a specific task
+
+Exploratory queries are those that:
+- Ask about what APIs are available
+- Ask for help or guidance
+- Ask how to do something
+- Ask which endpoints to use
+- Request explanations or information
+- Are general questions about capabilities
+
+Respond with only "execution" or "exploratory".
+
+Classification:"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            content = response.content
+            if isinstance(content, list):
+                content = str(content[0]).strip().lower() if content else ""
+            else:
+                content = str(content).strip().lower()
+            
+            return "execution" in content
+        except Exception:
+            # Fallback to exploratory if LLM fails
+            return False
 
     def _provide_api_guidance(self, query: str, intent: str, optimised_spec: Dict[str, Any]) -> str:
         """Provide guidance on available APIs for the user's intent."""
@@ -260,7 +320,7 @@ class IntentAwareApiTool(BaseTool):
 ```
         """.strip()
 
-    async def _arun(self, query: str, **kwargs) -> str:
+    async def _arun(self, query: str = "", **kwargs) -> str:
         """Async version of _run (delegates to sync version)."""
         return self._run(query, **kwargs)
 
