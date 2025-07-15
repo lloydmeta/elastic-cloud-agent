@@ -26,3 +26,6 @@ ENV/
 
 # API Specs directory - specific to each instance
 data/
+
+# Spec cache directory
+.spec_cache/
