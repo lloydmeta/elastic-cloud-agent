@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from langchain_core.language_models import BaseLanguageModel
 
 from elastic_cloud_agent.spec_optimization.spec_registry import SpecRegistry
 
@@ -20,7 +20,7 @@ class SpecCacheManager:
     def __init__(
         self,
         base_spec: Dict[str, Union[str, Dict]],
-        llm: Union[AzureChatOpenAI, ChatOpenAI],
+        llm: BaseLanguageModel,
         cache_dir: Optional[Path] = None,
         max_cache_size: int = 100,
         cache_ttl_seconds: int = 3600,
@@ -439,7 +439,7 @@ class SpecCacheManager:
 
 def create_lazy_spec_loader(
     base_spec: Dict[str, Union[str, Dict]],
-    llm: Union[AzureChatOpenAI, ChatOpenAI],
+    llm: BaseLanguageModel,
     cache_dir: Optional[Path] = None,
     **kwargs,
 ) -> SpecCacheManager:
@@ -463,7 +463,7 @@ def create_lazy_spec_loader(
 def get_spec_with_lazy_loading(
     query: str,
     base_spec: Dict[str, Union[str, Dict]],
-    llm: Union[AzureChatOpenAI, ChatOpenAI],
+    llm: BaseLanguageModel,
     cache_manager: Optional[SpecCacheManager] = None,
 ) -> Dict[str, Union[str, Dict]]:
     """

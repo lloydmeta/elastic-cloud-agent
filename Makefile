@@ -28,7 +28,7 @@ lint-fix:
 	$(PYTHON) -m ruff check --fix $(APP_NAME) tests
 
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest $(ARGS)
 
 clean:
 	rm -rf .venv

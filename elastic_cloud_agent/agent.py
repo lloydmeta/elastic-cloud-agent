@@ -9,7 +9,10 @@ from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
-from elastic_cloud_agent.tools import create_openapi_toolkit, create_search_tool
+from elastic_cloud_agent.tools import (
+    create_intent_aware_api_tool,
+    create_search_tool,
+)
 from elastic_cloud_agent.utils import Config
 
 
@@ -105,11 +108,12 @@ def create_agent(llm: Optional[BaseLanguageModel] = None) -> AgentExecutor:
     # Create the search tool
     search_tool = create_search_tool()
 
-    # Create the OpenAPI toolkit for the Elastic Cloud API
-    openapi_tools = create_openapi_toolkit(llm=llm)
+    # Create the intent-aware API tool for the Elastic Cloud API
+    # This replaces the traditional OpenAPI toolkit with our optimised version
+    intent_aware_api_tool = create_intent_aware_api_tool(llm=llm)
 
     # Combine all tools
-    tools = [search_tool] + openapi_tools
+    tools = [search_tool, intent_aware_api_tool]
 
     # Create the agent prompt
     prompt = create_agent_prompt()

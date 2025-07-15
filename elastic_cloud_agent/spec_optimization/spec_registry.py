@@ -4,7 +4,7 @@ Spec registry for mapping user intents to optimised OpenAPI spec subsets.
 
 from typing import Any, Dict, List, Union
 
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from langchain_core.language_models import BaseLanguageModel
 
 from elastic_cloud_agent.spec_optimization.operation_filter import (
     get_core_operations_spec,
@@ -45,9 +45,7 @@ INTENT_PATTERNS = {
 class SpecRegistry:
     """Registry for managing OpenAPI spec optimisations based on user intents."""
 
-    def __init__(
-        self, base_spec: Dict[str, Union[str, Dict]], llm: Union[AzureChatOpenAI, ChatOpenAI]
-    ):
+    def __init__(self, base_spec: Dict[str, Union[str, Dict]], llm: BaseLanguageModel):
         """
         Initialize the spec registry with a base OpenAPI specification.
 
@@ -384,7 +382,7 @@ Intent:"""
 
 
 def create_spec_registry(
-    base_spec: Dict[str, Union[str, Dict]], llm: Union[AzureChatOpenAI, ChatOpenAI]
+    base_spec: Dict[str, Union[str, Dict]], llm: BaseLanguageModel
 ) -> SpecRegistry:
     """
     Create and return a spec registry instance.
@@ -400,7 +398,7 @@ def create_spec_registry(
 
 
 def get_spec_for_query(
-    query: str, base_spec: Dict[str, Union[str, Dict]], llm: Union[AzureChatOpenAI, ChatOpenAI]
+    query: str, base_spec: Dict[str, Union[str, Dict]], llm: BaseLanguageModel
 ) -> Dict[str, Union[str, Dict]]:
     """
     Convenience function to get optimised spec for a query.
@@ -417,7 +415,7 @@ def get_spec_for_query(
     return registry.get_spec_for_query(query)
 
 
-def analyse_query_intent(query: str, llm: Union[AzureChatOpenAI, ChatOpenAI]) -> Dict[str, Any]:
+def analyse_query_intent(query: str, llm: BaseLanguageModel) -> Dict[str, Any]:
     """
     Convenience function to analyse query intent.
 

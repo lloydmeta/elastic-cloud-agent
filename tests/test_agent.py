@@ -73,13 +73,13 @@ def test_create_llm_without_azure_config(mock_chat_openai, mock_is_azure_config)
 
 @patch("elastic_cloud_agent.agent.create_llm")
 @patch("elastic_cloud_agent.agent.create_search_tool")
-@patch("elastic_cloud_agent.agent.create_openapi_toolkit")
+@patch("elastic_cloud_agent.agent.create_intent_aware_api_tool")
 @patch("elastic_cloud_agent.agent.create_openai_functions_agent")
 @patch("elastic_cloud_agent.agent.AgentExecutor")
 def test_create_agent(
     mock_agent_executor,
     mock_create_openai_functions_agent,
-    mock_create_openapi_toolkit,
+    mock_create_intent_aware_api_tool,
     mock_create_search_tool,
     mock_create_llm,
     mock_env_vars,
@@ -92,8 +92,8 @@ def test_create_agent(
     mock_search_tool = MagicMock()
     mock_create_search_tool.return_value = mock_search_tool
 
-    mock_openapi_tools = [MagicMock(), MagicMock()]
-    mock_create_openapi_toolkit.return_value = mock_openapi_tools
+    mock_intent_aware_api_tool = MagicMock()
+    mock_create_intent_aware_api_tool.return_value = mock_intent_aware_api_tool
 
     mock_agent = MagicMock()
     mock_create_openai_functions_agent.return_value = mock_agent
@@ -107,10 +107,10 @@ def test_create_agent(
     # Verify the correct calls were made
     mock_create_llm.assert_called_once()
     mock_create_search_tool.assert_called_once()
-    mock_create_openapi_toolkit.assert_called_once_with(llm=mock_llm)
+    mock_create_intent_aware_api_tool.assert_called_once_with(llm=mock_llm)
 
     # Check that the tools are combined correctly
-    __tools = [mock_search_tool] + mock_openapi_tools
+    __tools = [mock_search_tool, mock_intent_aware_api_tool]
     mock_create_openai_functions_agent.assert_called_once()
 
     # Check that the agent executor is created correctly
@@ -127,7 +127,7 @@ def test_create_agent_with_custom_llm(mock_create_llm, mock_env_vars):
 
     with (
         patch("elastic_cloud_agent.agent.create_search_tool"),
-        patch("elastic_cloud_agent.agent.create_openapi_toolkit"),
+        patch("elastic_cloud_agent.agent.create_intent_aware_api_tool"),
         patch("elastic_cloud_agent.agent.create_openai_functions_agent"),
         patch("elastic_cloud_agent.agent.AgentExecutor"),
     ):

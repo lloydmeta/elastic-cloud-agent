@@ -24,7 +24,9 @@ class Config:
     AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT", "")
 
     # Elastic Cloud configuration
-    ELASTIC_CLOUD_BASE_URL: str = os.getenv("ELASTIC_CLOUD_BASE_URL", "")
+    ELASTIC_CLOUD_BASE_URL: str = os.getenv(
+        "ELASTIC_CLOUD_BASE_URL", "https://cloud.elastic.co/api/v1"
+    )
     ELASTIC_CLOUD_API_KEY: str = os.getenv("ELASTIC_CLOUD_API_KEY", "")
 
     # Path to OpenAPI specification
