@@ -6,8 +6,8 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import MessagesPlaceholder
+from langchain_openai.chat_models.base import BaseChatOpenAI
 
 from elastic_cloud_agent.agent import create_agent, create_agent_prompt, create_llm
 
@@ -73,27 +73,27 @@ def test_create_llm_without_azure_config(mock_chat_openai, mock_is_azure_config)
 
 @patch("elastic_cloud_agent.agent.create_llm")
 @patch("elastic_cloud_agent.agent.create_search_tool")
-@patch("elastic_cloud_agent.agent.create_openapi_toolkit")
+@patch("elastic_cloud_agent.agent.create_smart_openapi_toolkit")
 @patch("elastic_cloud_agent.agent.create_openai_functions_agent")
 @patch("elastic_cloud_agent.agent.AgentExecutor")
 def test_create_agent(
     mock_agent_executor,
     mock_create_openai_functions_agent,
-    mock_create_openapi_toolkit,
+    mock_create_smart_openapi_toolkit,
     mock_create_search_tool,
     mock_create_llm,
     mock_env_vars,
 ):
     """Test that the agent is created correctly."""
     # Mock the return values
-    mock_llm = MagicMock(spec=BaseLanguageModel)
+    mock_llm = MagicMock(spec=BaseChatOpenAI)
     mock_create_llm.return_value = mock_llm
 
     mock_search_tool = MagicMock()
     mock_create_search_tool.return_value = mock_search_tool
 
-    mock_openapi_tools = [MagicMock(), MagicMock()]
-    mock_create_openapi_toolkit.return_value = mock_openapi_tools
+    mock_api_tools = [MagicMock(), MagicMock(), MagicMock()]  # Simulate multiple API tools
+    mock_create_smart_openapi_toolkit.return_value = mock_api_tools
 
     mock_agent = MagicMock()
     mock_create_openai_functions_agent.return_value = mock_agent
@@ -107,10 +107,9 @@ def test_create_agent(
     # Verify the correct calls were made
     mock_create_llm.assert_called_once()
     mock_create_search_tool.assert_called_once()
-    mock_create_openapi_toolkit.assert_called_once_with(llm=mock_llm)
+    mock_create_smart_openapi_toolkit.assert_called_once_with(llm=mock_llm)
 
-    # Check that the tools are combined correctly
-    __tools = [mock_search_tool] + mock_openapi_tools
+    # Check that the agent is created with tools
     mock_create_openai_functions_agent.assert_called_once()
 
     # Check that the agent executor is created correctly
@@ -123,11 +122,11 @@ def test_create_agent(
 @patch("elastic_cloud_agent.agent.create_llm")
 def test_create_agent_with_custom_llm(mock_create_llm, mock_env_vars):
     """Test that the agent is created with a custom LLM if provided."""
-    custom_llm = MagicMock(spec=BaseLanguageModel)
+    custom_llm = MagicMock(spec=BaseChatOpenAI)
 
     with (
         patch("elastic_cloud_agent.agent.create_search_tool"),
-        patch("elastic_cloud_agent.agent.create_openapi_toolkit"),
+        patch("elastic_cloud_agent.agent.create_smart_openapi_toolkit"),
         patch("elastic_cloud_agent.agent.create_openai_functions_agent"),
         patch("elastic_cloud_agent.agent.AgentExecutor"),
     ):
