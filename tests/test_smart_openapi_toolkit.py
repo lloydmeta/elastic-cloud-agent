@@ -128,6 +128,90 @@ class TestSmartJsonExplorerTool:
         assert "Error in smart JSON exploration" in result
         assert "Classification error" in result
 
+    @patch("elastic_cloud_agent.tools.smart_openapi_toolkit.create_json_agent")
+    @patch("elastic_cloud_agent.tools.smart_openapi_toolkit.classify_intent")
+    def test_agent_caching_cache_hit(
+        self, mock_classify_intent, mock_create_json_agent, mock_llm, sample_api_spec
+    ):
+        """Test that agents are cached and reused for the same tag set."""
+        # Setup mocks
+        mock_classify_intent.return_value = ["Deployments"]
+
+        mock_agent = Mock()
+        mock_agent.invoke.return_value = {"output": "Mock agent response"}
+        mock_create_json_agent.return_value = mock_agent
+
+        # Create tool
+        tool = SmartJsonExplorerTool(llm=mock_llm, api_spec=sample_api_spec)
+
+        # First call - should create and cache agent
+        result1 = tool._run("How do I list deployments?")
+        
+        # Second call with same tags - should use cached agent
+        result2 = tool._run("How do I create deployments?")
+
+        # Verify
+        assert mock_classify_intent.call_count == 2
+        mock_create_json_agent.assert_called_once()  # Should only create agent once
+        assert result1 == "Mock agent response"
+        assert result2 == "Mock agent response"
+
+    @patch("elastic_cloud_agent.tools.smart_openapi_toolkit.create_json_agent")
+    @patch("elastic_cloud_agent.tools.smart_openapi_toolkit.classify_intent")
+    def test_agent_caching_cache_miss(
+        self, mock_classify_intent, mock_create_json_agent, mock_llm, sample_api_spec
+    ):
+        """Test that different tag sets create different cached agents."""
+        # Setup mocks for different tag sets
+        mock_classify_intent.side_effect = [["Deployments"], ["Accounts"]]
+
+        mock_agent = Mock()
+        mock_agent.invoke.return_value = {"output": "Mock agent response"}
+        mock_create_json_agent.return_value = mock_agent
+
+        # Create tool
+        tool = SmartJsonExplorerTool(llm=mock_llm, api_spec=sample_api_spec)
+
+        # First call with Deployments tags
+        result1 = tool._run("How do I list deployments?")
+        
+        # Second call with different Accounts tags - should create new agent
+        result2 = tool._run("How do I manage accounts?")
+
+        # Verify
+        assert mock_classify_intent.call_count == 2
+        assert mock_create_json_agent.call_count == 2  # Should create two different agents
+        assert result1 == "Mock agent response"
+        assert result2 == "Mock agent response"
+
+    @patch("elastic_cloud_agent.tools.smart_openapi_toolkit.create_json_agent")
+    @patch("elastic_cloud_agent.tools.smart_openapi_toolkit.classify_intent")
+    def test_agent_caching_frozenset_ordering(
+        self, mock_classify_intent, mock_create_json_agent, mock_llm, sample_api_spec
+    ):
+        """Test that different tag orderings result in cache hits."""
+        # Setup mocks with different tag orderings
+        mock_classify_intent.side_effect = [["Deployments", "Accounts"], ["Accounts", "Deployments"]]
+
+        mock_agent = Mock()
+        mock_agent.invoke.return_value = {"output": "Mock agent response"}
+        mock_create_json_agent.return_value = mock_agent
+
+        # Create tool
+        tool = SmartJsonExplorerTool(llm=mock_llm, api_spec=sample_api_spec)
+
+        # First call with tags in one order
+        result1 = tool._run("Query 1")
+        
+        # Second call with same tags in different order - should use cached agent
+        result2 = tool._run("Query 2")
+
+        # Verify
+        assert mock_classify_intent.call_count == 2
+        mock_create_json_agent.assert_called_once()  # Should only create agent once due to frozenset
+        assert result1 == "Mock agent response"
+        assert result2 == "Mock agent response"
+
 
 class TestSmartJsonExplorerOpenAPIToolkit:
     """Test cases for SmartJsonExplorerOpenAPIToolkit."""

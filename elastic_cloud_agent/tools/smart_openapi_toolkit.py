@@ -17,6 +17,7 @@ from langchain_community.tools.json.tool import JsonSpec
 from langchain_community.utilities.requests import TextRequestsWrapper
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.tools import BaseTool, Tool
+from langchain.agents.agent import AgentExecutor
 
 from elastic_cloud_agent.tools.openapi_tool import create_requests_wrapper, load_api_spec
 from elastic_cloud_agent.utils.openapi_utils import (
@@ -55,6 +56,7 @@ class SmartJsonExplorerTool:
         self.available_tags = extract_tags_from_spec(api_spec)
         self.name = "json_explorer"
         self.description = DESCRIPTION
+        self._agent_cache: Dict[frozenset, AgentExecutor] = {}
 
     def _run(self, query: str) -> str:
         """
@@ -69,24 +71,37 @@ class SmartJsonExplorerTool:
         try:
             # Step 1: Classify intent to determine relevant categories
             relevant_tags = classify_intent(query, self.available_tags, self.llm)
+            tags_key = frozenset(relevant_tags)
 
             print(f"Smart JSON Explorer - Classified intent: {relevant_tags}")
 
-            # Step 2: Filter the API spec to relevant categories
-            filtered_spec = filter_spec_by_tags(self.api_spec, relevant_tags)
+            # Step 2: Check cache for existing agent
+            if tags_key in self._agent_cache:
+                json_agent = self._agent_cache[tags_key]
+            else:
+                # Step 3: Filter the API spec to relevant categories
+                filtered_spec = filter_spec_by_tags(self.api_spec, relevant_tags)
 
-            paths = list(filtered_spec.get("paths", {}).keys())
-            preview = paths[:5]
-            if len(paths) > 5:
-                preview.append("...")
-            print(f"Smart JSON Explorer - Filtered to paths: [{preview}]")
+                paths = list(filtered_spec.get("paths", {}).keys())
+                preview = paths[:5]
+                if len(paths) > 5:
+                    preview.append("...")
+                print(f"Smart JSON Explorer - Filtered to paths: {preview}")
 
-            # Step 3: Create a focused JsonAgent with the filtered spec
-            json_spec = JsonSpec(dict_=filtered_spec)
-            json_toolkit = JsonToolkit(spec=json_spec)
-            json_agent = create_json_agent(self.llm, json_toolkit, verbose=False)
+                # Step 4: Create a focused JsonAgent with the filtered spec
+                json_spec = JsonSpec(dict_=filtered_spec)
+                json_toolkit = JsonToolkit(spec=json_spec)
+                json_agent = create_json_agent(
+                    self.llm, 
+                    json_toolkit, 
+                    verbose=False,
+                    agent_executor_kwargs={"handle_parsing_errors": True}
+                )
 
-            # Step 4: Run the focused JsonAgent
+                # Step 5: Cache the agent
+                self._agent_cache[tags_key] = json_agent
+
+            # Step 6: Run the focused JsonAgent
             response = json_agent.invoke({"input": query})
             result = response["output"]
 
