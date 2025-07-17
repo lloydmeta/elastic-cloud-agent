@@ -123,7 +123,7 @@ def create_agent(llm: Optional[BaseChatOpenAI] = None) -> AgentExecutor:
         agent=agent,
         tools=tools,
         verbose=True,  # Set to True to see the agent's thoughts, False for production
-        max_iterations=10,  # Limit the maximum number of steps the agent can take
+        max_iterations=30,  # Limit the maximum number of steps the agent can take
         memory=None,  # We'll manage memory in the main.py file for simplicity
         handle_parsing_errors=True,  # Handle parsing errors gracefully
     )
