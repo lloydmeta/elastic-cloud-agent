@@ -2,14 +2,14 @@
 Agent configuration for the Elastic Cloud Agent.
 """
 
-from typing import Optional, Union
+from typing import Optional
 
 from langchain.agents import AgentExecutor, create_openai_functions_agent
-from langchain_core.language_models import BaseLanguageModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from langchain_openai.chat_models.base import BaseChatOpenAI
 
-from elastic_cloud_agent.tools import create_openapi_toolkit, create_search_tool
+from elastic_cloud_agent.tools import create_search_tool, create_smart_openapi_toolkit
 from elastic_cloud_agent.utils import Config
 
 
@@ -63,13 +63,13 @@ def create_agent_prompt() -> ChatPromptTemplate:
     )
 
 
-def create_llm() -> Union[AzureChatOpenAI, ChatOpenAI]:
+def create_llm() -> BaseChatOpenAI:
     """
     Create and configure the language model.
     Uses Azure OpenAI if Azure configuration is provided, otherwise uses standard OpenAI.
 
     Returns:
-        Union[AzureChatOpenAI, ChatOpenAI]: The configured language model
+        BaseChatOpenAI: The configured language model
     """
     if Config.is_azure_config():
         return AzureChatOpenAI(
@@ -88,7 +88,7 @@ def create_llm() -> Union[AzureChatOpenAI, ChatOpenAI]:
         )
 
 
-def create_agent(llm: Optional[BaseLanguageModel] = None) -> AgentExecutor:
+def create_agent(llm: Optional[BaseChatOpenAI] = None) -> AgentExecutor:
     """
     Create an agent executor with the appropriate tools and configuration.
 
@@ -105,11 +105,12 @@ def create_agent(llm: Optional[BaseLanguageModel] = None) -> AgentExecutor:
     # Create the search tool
     search_tool = create_search_tool()
 
-    # Create the OpenAPI toolkit for the Elastic Cloud API
-    openapi_tools = create_openapi_toolkit(llm=llm)
+    # Create the smart OpenAPI toolkit with all HTTP tools and intent-aware JSON explorer
+    # This gives us requests_get, requests_post, etc. + smart json_explorer
+    api_tools = create_smart_openapi_toolkit(llm=llm)
 
     # Combine all tools
-    tools = [search_tool] + openapi_tools
+    tools = [search_tool] + api_tools
 
     # Create the agent prompt
     prompt = create_agent_prompt()
