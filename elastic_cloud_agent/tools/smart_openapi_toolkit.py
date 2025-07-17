@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+from langchain.agents.agent import AgentExecutor
 from langchain_community.agent_toolkits.json.base import create_json_agent
 from langchain_community.agent_toolkits.json.toolkit import JsonToolkit
 from langchain_community.agent_toolkits.openapi.prompt import DESCRIPTION
@@ -19,7 +20,6 @@ from langchain_community.tools.json.tool import JsonSpec
 from langchain_community.utilities.requests import TextRequestsWrapper
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.tools import BaseTool, Tool
-from langchain.agents.agent import AgentExecutor
 
 from elastic_cloud_agent.utils.config import Config, get_api_spec_path
 from elastic_cloud_agent.utils.openapi_utils import (
@@ -132,10 +132,10 @@ class SmartJsonExplorerTool:
                 json_spec = JsonSpec(dict_=filtered_spec)
                 json_toolkit = JsonToolkit(spec=json_spec)
                 json_agent = create_json_agent(
-                    self.llm, 
-                    json_toolkit, 
+                    self.llm,
+                    json_toolkit,
                     verbose=False,
-                    agent_executor_kwargs={"handle_parsing_errors": True}
+                    agent_executor_kwargs={"handle_parsing_errors": True, "max_iterations": 30},
                 )
 
                 # Step 5: Cache the agent

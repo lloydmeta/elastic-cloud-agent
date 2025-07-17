@@ -146,7 +146,7 @@ class TestSmartJsonExplorerTool:
 
         # First call - should create and cache agent
         result1 = tool._run("How do I list deployments?")
-        
+
         # Second call with same tags - should use cached agent
         result2 = tool._run("How do I create deployments?")
 
@@ -174,7 +174,7 @@ class TestSmartJsonExplorerTool:
 
         # First call with Deployments tags
         result1 = tool._run("How do I list deployments?")
-        
+
         # Second call with different Accounts tags - should create new agent
         result2 = tool._run("How do I manage accounts?")
 
@@ -191,7 +191,10 @@ class TestSmartJsonExplorerTool:
     ):
         """Test that different tag orderings result in cache hits."""
         # Setup mocks with different tag orderings
-        mock_classify_intent.side_effect = [["Deployments", "Accounts"], ["Accounts", "Deployments"]]
+        mock_classify_intent.side_effect = [
+            ["Deployments", "Accounts"],
+            ["Accounts", "Deployments"],
+        ]
 
         mock_agent = Mock()
         mock_agent.invoke.return_value = {"output": "Mock agent response"}
@@ -202,7 +205,7 @@ class TestSmartJsonExplorerTool:
 
         # First call with tags in one order
         result1 = tool._run("Query 1")
-        
+
         # Second call with same tags in different order - should use cached agent
         result2 = tool._run("Query 2")
 
